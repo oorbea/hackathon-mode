@@ -2,7 +2,7 @@
 
 `hackathon-mode` is an MCP server that injects a hackathon operating protocol into AI agents: ship fast, stay concise, keep a strategic project index, and preserve project-specific rules across sessions.
 
-Current project version: `1.1.1`
+Current project version: `1.1.2`
 
 > https://github.com/oorbea/hackathon-mode
 
@@ -20,6 +20,15 @@ Run without installing:
 ```bash
 npx hackathon-mode@latest
 ```
+
+Bootstrap a project-local MCP config without adding `hackathon-mode` as a project dependency:
+
+```bash
+cd my-hackathon-project
+npx hackathon-mode@latest init --agent all
+```
+
+This works for Python, Go, Rust, JavaScript, and other project types. The bootstrap command only creates local MCP configuration files that point agents to `npx hackathon-mode@latest`; it does not modify `package.json`, `pyproject.toml`, `requirements.txt`, or other project dependency files.
 
 Build from source:
 
@@ -63,6 +72,38 @@ Claude Code can also add it from the CLI:
 claude mcp add --scope user hackathon-mode -- npx hackathon-mode@latest
 claude mcp add hackathon-mode -- npx hackathon-mode@latest
 ```
+
+## Project Bootstrap
+
+Use `init` from the root of a hackathon project to create local MCP config files:
+
+```bash
+npx hackathon-mode@latest init --agent all
+```
+
+Agent-specific bootstrap:
+
+```bash
+npx hackathon-mode@latest init --agent claude
+npx hackathon-mode@latest init --agent cursor
+npx hackathon-mode@latest init --agent codex
+npx hackathon-mode@latest init --agent gemini
+npx hackathon-mode@latest init --agent antigravity
+npx hackathon-mode@latest init --agent openclaw
+```
+
+`--agent all` creates:
+
+```text
+.mcp.json
+.cursor/mcp.json
+.codex/mcp.json
+.gemini/settings.json
+.antigravity/mcp.json
+.openclaw/mcp.json
+```
+
+If a config file already exists, `init` preserves existing JSON and other MCP servers, then adds or replaces only `mcpServers["hackathon-mode"]`. Invalid JSON fails with an error and is not overwritten.
 
 ## Quick Start
 
