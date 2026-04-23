@@ -1,31 +1,37 @@
-# hackathon-mode 🚀
+# hackathon-mode
 
-> An MCP server that overrides AI agent behavior (Claude Code, Cursor, etc.) to prioritize **speed**, **functionality**, and **token efficiency** during a hackathon.
+MCP server that overrides AI agent behavior for hackathon speed: skip docs/tests, ship fast, save tokens, and keep a strategic index so agents orient instantly across sessions.
+
+> [https://github.com/oorbea/hackathon-mode](https://github.com/oorbea/hackathon-mode)
 
 ---
 
 ## What It Does
 
-When active, hackathon-mode injects the **Hackathon Protocol** into every agent interaction:
+When active, every agent interaction follows the Hackathon Protocol:
 
-| Rule | Effect |
-|------|--------|
-| Skip docs & tests | No boilerplate noise unless you ask |
-| Working code > best practices | Ship first, polish never |
-| No abstractions / future-proofing | Solve today's problem |
-| Zero technical debt guilt | Shortcuts are features |
-| Proactive "wow" suggestions | Agent surfaces cool ideas unprompted |
-| Token-saving mode | Ultra-concise replies |
-| Strategic indexing | `.hackathon-index.md` keeps agents oriented |
+| Rule | Behavior |
+|------|----------|
+| Skip docs & tests | Unless you explicitly ask |
+| Working code > best practices | Ship it, polish later |
+| No abstractions | Solve the 48-hour problem, not the 5-year one |
+| Zero tech debt guilt | Shortcuts are features |
+| Suggest wow features | Agent proactively proposes high-impact ideas |
+| Token-saving mode | Ultra-concise replies, no filler, no unnecessary comments |
+| Strategic indexing | Agent reads/writes `.hackathon-index.md` to stay oriented across sessions |
+| Match user's language | Agent always replies in the language the user writes in |
+
+The protocol is **injected automatically** on every agent connection when mode is active — no need to remind the agent each session.
 
 ---
 
 ## Installation
 
-### Prerequisites
+### NPX (no install needed)
 
-- Node.js ≥ 18
-- npm ≥ 9
+```
+npx hackathon-mode@latest
+```
 
 ### Build from source
 
@@ -36,167 +42,212 @@ npm install
 npm run build
 ```
 
+---
+
+## Agent Configuration
+
+All agents use the same JSON block. Replace `npx hackathon-mode@latest` with `node /path/to/hackathon-mode/dist/index.js` if you built from source.
+
 ### Claude Code
 
-Add the server to your Claude Code MCP configuration:
+**User-level** (all projects on your machine):
 
 ```bash
-# Option A – run with node (after build)
-claude mcp add hackathon-mode node /absolute/path/to/hackathon-mode/dist/index.js
-
-# Option B – run with tsx (no build required)
-claude mcp add hackathon-mode npx tsx /absolute/path/to/hackathon-mode/src/index.ts
+claude mcp add --scope user hackathon-mode -- npx hackathon-mode@latest
 ```
 
-Or edit `~/.claude/claude_desktop_config.json` (Claude Desktop) / your project's `.mcp.json` manually:
+**Project-level** (stored in `.mcp.json`, commit for team sharing):
+
+```bash
+claude mcp add hackathon-mode -- npx hackathon-mode@latest
+```
+
+Or manually in `~/.claude.json` (user) / `.mcp.json` (project):
 
 ```json
 {
   "mcpServers": {
     "hackathon-mode": {
-      "command": "node",
-      "args": ["/absolute/path/to/hackathon-mode/dist/index.js"]
+      "command": "npx",
+      "args": ["hackathon-mode@latest"]
     }
   }
 }
 ```
+
+---
 
 ### Cursor
 
-Open **Cursor Settings → MCP** and add a new server:
+**User-level** — `~/.cursor/mcp.json`
 
-| Field | Value |
-|-------|-------|
-| Name | `hackathon-mode` |
-| Type | `stdio` |
-| Command | `node` |
-| Args | `/absolute/path/to/hackathon-mode/dist/index.js` |
-
-Or edit `~/.cursor/mcp.json`:
+**Project-level** — `.cursor/mcp.json` at repo root
 
 ```json
 {
   "mcpServers": {
     "hackathon-mode": {
-      "command": "node",
-      "args": ["/absolute/path/to/hackathon-mode/dist/index.js"]
+      "command": "npx",
+      "args": ["hackathon-mode@latest"]
     }
   }
 }
 ```
+
+---
+
+### OpenAI Codex
+
+`~/.codex/mcp.json`
+
+```json
+{
+  "mcpServers": {
+    "hackathon-mode": {
+      "command": "npx",
+      "args": ["hackathon-mode@latest"]
+    }
+  }
+}
+```
+
+---
+
+### Gemini CLI
+
+`~/.gemini/settings.json`
+
+```json
+{
+  "mcpServers": {
+    "hackathon-mode": {
+      "command": "npx",
+      "args": ["hackathon-mode@latest"]
+    }
+  }
+}
+```
+
+---
+
+### Google Antigravity
+
+`~/.antigravity/mcp.json` (user) / `.antigravity/mcp.json` (project)
+
+```json
+{
+  "mcpServers": {
+    "hackathon-mode": {
+      "command": "npx",
+      "args": ["hackathon-mode@latest"]
+    }
+  }
+}
+```
+
+---
+
+### OpenClaw
+
+`~/.openclaw/mcp.json` (user) / `.openclaw/mcp.json` (project)
+
+```json
+{
+  "mcpServers": {
+    "hackathon-mode": {
+      "command": "npx",
+      "args": ["hackathon-mode@latest"]
+    }
+  }
+}
+```
+
+---
+
+## User-Level vs Project-Level
+
+| Scope | Config location | Effect |
+|-------|----------------|--------|
+| **User-level** | `~/.claude.json`, `~/.cursor/mcp.json`, etc. | Active in every project on your machine |
+| **Project-level** | `.mcp.json`, `.cursor/mcp.json`, etc. at repo root | Active only in this repo; commit it so teammates get it automatically |
 
 ---
 
 ## Quick Start
 
-### 1. Enable Hackathon Mode
-
-In your AI chat, call the tool:
-
-```
-enable_hackathon_mode
-```
-
-The agent will now follow the Hackathon Protocol for every subsequent message.
-
-### 2. Initialize your project
-
-```
-initialize_repo
-  workspaceRoot: /path/to/your/project
-  projectName: MyAwesomeApp
-  goals: "A real-time collaborative whiteboard for remote teams"
-  techStack: "Next.js, Supabase, OpenAI"
-```
-
-This creates:
-- `README.md` – project overview
-- `.env.example` – pre-populated with env vars for your stack
-- `HACKATHON_PLAN.md` – 48-hour sprint plan
-- `.gitignore` – sensible defaults
-
-### 3. Update the strategic index
-
-```
-update_index
-  workspaceRoot: /path/to/your/project
-```
-
-Generates `.hackathon-index.md` – a compact map of your codebase that helps the AI agent orient itself quickly in future turns.
-
-### 4. Brainstorm wow-factor features
-
-```
-brainstorm
-  workspaceRoot: /path/to/your/project
-  count: 5
-```
-
-Returns 3–5 tailored feature ideas with effort estimates and tech hints.
-
-### 5. Check / disable mode
-
-```
-get_mode_status    # shows current state + protocol rules
-disable_hackathon_mode  # restores normal AI behavior
-```
+1. **Activate** — ask your agent to call `enable_hackathon_mode`
+2. **Bootstrap** — ask your agent to call `initialize_repo`; it will ask you for:
+   - Project name
+   - One-sentence goal
+   - Tech stack
+   - Whether you want a `docker-compose.yml`
+   - If yes: what services/features you need (databases, cache, queues, storage…)
+3. **Index** — call `update_index` to generate `.hackathon-index.md`
+4. **Ideate** — call `brainstorm` for high-impact feature ideas tailored to your stack
+5. **Ship** — build fast; re-run `update_index` whenever the project structure changes significantly
+6. **Wrap up** — call `disable_hackathon_mode` to restore normal behavior
 
 ---
 
-## Tools Reference
+## Tools
 
-| Tool | Description |
-|------|-------------|
-| `enable_hackathon_mode` | Activate the Hackathon Protocol globally |
-| `disable_hackathon_mode` | Deactivate and restore normal behavior |
-| `get_mode_status` | Show current state + full protocol text |
-| `initialize_repo` | Bootstrap boilerplate files for a new project |
-| `brainstorm` | Get 3–5 "wow-factor" feature ideas |
-| `update_index` | Regenerate `.hackathon-index.md` for faster agent context |
+| Tool | Params | Description |
+|------|--------|-------------|
+| `enable_hackathon_mode` | — | Activate the Hackathon Protocol |
+| `disable_hackathon_mode` | — | Restore normal AI behavior |
+| `get_mode_status` | — | Check active state + read the full protocol |
+| `initialize_repo` | all optional | Bootstrap project files; agent asks for details conversationally |
+| `update_index` | `workspaceRoot?` | Regenerate `.hackathon-index.md` |
+| `brainstorm` | `workspaceRoot?`, `count?` (1–5) | Suggest wow-factor features matched to your stack |
+
+All `workspaceRoot` params default to the current working directory when omitted.
+
+### `initialize_repo` — generated files
+
+| File | Always | Only if docker requested |
+|------|--------|--------------------------|
+| `README.md` | ✓ | |
+| `.env.example` | ✓ | |
+| `HACKATHON_PLAN.md` | ✓ | |
+| `.gitignore` | ✓ | |
+| `docker-compose.yml` | | ✓ |
+
+Auto-detected services for `docker-compose.yml`: PostgreSQL, MySQL, MongoDB, Redis, RabbitMQ, MinIO (S3-compatible), Elasticsearch — based on your tech stack and features.
+
+---
 
 ## Resources
 
 | URI | Description |
 |-----|-------------|
-| `hackathon://protocol` | The Hackathon Protocol as a system prompt fragment |
+| `hackathon://protocol` | Markdown fragment with the active Hackathon Protocol rules |
 
 ---
 
-## State
+## How enable/disable Works
 
-Mode state is stored in `~/.hackathon-mcp-config.json` and persists across sessions.
+When `enable_hackathon_mode` is called, a `_hackathon_rules` entry is injected into the MCP tool list. Every MCP-compatible agent fetches the tool list on connect, so the protocol is **guaranteed to be received** at the start of every session while mode is active.
 
-```json
-{
-  "active": true,
-  "activatedAt": "2025-01-01T00:00:00.000Z"
-}
-```
+When `disable_hackathon_mode` is called, `_hackathon_rules` disappears from the tool list on the next connection.
+
+State is persisted to `~/.hackathon-mcp-config.json` and survives agent restarts.
 
 ---
 
 ## Development
 
 ```bash
-npm run dev    # run with tsx (no build step)
-npm run build  # compile TypeScript → dist/
-npm start      # run compiled output
+npm run dev      # Run with tsx (no build step)
+npm run build    # Compile TypeScript → dist/
+npm start        # Run compiled server
 ```
-
----
-
-## Project Structure
 
 ```
 src/
-  index.ts          # MCP server entry point
+  index.ts          # MCP server, tool registration, protocol injection
   logic/
-    config.ts       # State management (~/.hackathon-mcp-config.json)
-    indexing.ts     # Workspace scanning + .hackathon-index.md generation
-    brainstorm.ts   # "Wow-factor" feature suggestion engine
-    repo-init.ts    # Project boilerplate generation
+    config.ts       # State persistence (~/.hackathon-mcp-config.json)
+    indexing.ts     # Workspace scanner → .hackathon-index.md
+    brainstorm.ts   # Feature suggestion engine
+    repo-init.ts    # Project bootstrapper + docker-compose generator
 ```
-
----
-
-*Built with the hackathon spirit: lean and effective.*

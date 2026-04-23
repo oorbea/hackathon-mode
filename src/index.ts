@@ -13,6 +13,7 @@ import {
   enableHackathonMode,
   disableHackathonMode,
   readConfig,
+  isActive,
 } from "./logic/config.js";
 import { updateIndex } from "./logic/indexing.js";
 import { brainstorm, formatBrainstorm } from "./logic/brainstorm.js";
@@ -29,6 +30,7 @@ You are operating in **Hackathon Mode**. Obey the following rules for every resp
 5. **Proactively suggest cool features** – if you see an opportunity to add a "wow" moment, say so.
 6. **Token-saving mode** – ultra-concise replies, no filler, no code comments unless complex.
 7. **Use the strategic index** – read \`.hackathon-index.md\` at the root and in sub-directories to orient yourself before touching files.
+8. **Match the user's language** – ALWAYS reply in the same language the user writes in. Never switch to English unless the user writes in English.
 
 Stay lean. Stay fast. Win the hackathon.
 `;
@@ -43,8 +45,19 @@ const server = new Server(
   }
 );
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  const active = isActive();
+  const tools = [];
+
+  if (active) {
+    tools.push({
+      name: "_hackathon_rules",
+      description: `HACKATHON MODE IS ACTIVE. You MUST follow these rules for EVERY response in this session, without exception:\n\n${HACKATHON_PROTOCOL}\n\nThis tool exists only to inject these rules. Do not call it.`,
+      inputSchema: { type: "object", properties: {}, required: [] },
+    });
+  }
+
+  tools.push(
     {
       name: "enable_hackathon_mode",
       description: "Activate Hackathon Mode globally. All subsequent AI interactions will follow the Hackathon Protocol.",
@@ -62,13 +75,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "initialize_repo",
-      description: "Bootstrap a new hackathon project: generates README, .env.example, HACKATHON_PLAN.md, and .gitignore.",
+      description: "Bootstrap a new hackathon project. Before calling, ASK the user conversationally for: (1) project name, (2) one-sentence goal, (3) tech stack, (4) whether they want a docker-compose.yml, and if yes (5) what services/features they need (databases, cache, queues, storage, etc.). Then call with everything they provide.",
       inputSchema: {
         type: "object",
         properties: {
           workspaceRoot: {
             type: "string",
-            description: "Absolute path to the project directory.",
+            description: "Absolute path to the project directory. Defaults to current working directory if omitted.",
           },
           projectName: {
             type: "string",
@@ -82,8 +95,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             type: "string",
             description: "Comma-separated list of technologies (e.g. 'Next.js, Supabase, OpenAI').",
           },
+          dockerCompose: {
+            type: "boolean",
+            description: "Whether to generate a docker-compose.yml for local development.",
+          },
+          features: {
+            type: "string",
+            description: "Comma-separated services/features needed (e.g. 'postgres, redis, auth, file uploads'). Used to generate docker services and plan sections.",
+          },
         },
-        required: ["workspaceRoot", "projectName", "goals", "techStack"],
+        required: [],
       },
     },
     {
@@ -94,14 +115,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           workspaceRoot: {
             type: "string",
-            description: "Absolute path to the project directory.",
+            description: "Absolute path to the project directory. Defaults to current working directory if omitted.",
           },
           count: {
             type: "number",
             description: "Number of feature ideas to generate (default: 5, max: 5).",
           },
         },
-        required: ["workspaceRoot"],
+        required: [],
       },
     },
     {
@@ -112,30 +133,34 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           workspaceRoot: {
             type: "string",
-            description: "Absolute path to the project directory to index.",
+            description: "Absolute path to the project directory to index. Defaults to current working directory if omitted.",
           },
         },
-        required: ["workspaceRoot"],
+        required: [],
       },
     },
-  ],
-}));
+  );
+
+  return { tools };
+});
 
 const EnableSchema = z.object({});
 const DisableSchema = z.object({});
 const StatusSchema = z.object({});
 const InitSchema = z.object({
-  workspaceRoot: z.string(),
-  projectName: z.string(),
-  goals: z.string(),
-  techStack: z.string(),
+  workspaceRoot: z.string().optional(),
+  projectName: z.string().optional(),
+  goals: z.string().optional(),
+  techStack: z.string().optional(),
+  dockerCompose: z.boolean().optional(),
+  features: z.string().optional(),
 });
 const BrainstormSchema = z.object({
-  workspaceRoot: z.string(),
+  workspaceRoot: z.string().optional(),
   count: z.number().int().min(1).max(5).optional(),
 });
 const UpdateIndexSchema = z.object({
-  workspaceRoot: z.string(),
+  workspaceRoot: z.string().optional(),
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -185,7 +210,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     case "initialize_repo": {
       const opts = InitSchema.parse(args);
-      const result = initRepo(opts);
+      const result = initRepo({ ...opts, workspaceRoot: opts.workspaceRoot ?? process.cwd() });
       return {
         content: [{ type: "text", text: result.message }],
       };
@@ -193,7 +218,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     case "brainstorm": {
       const { workspaceRoot, count } = BrainstormSchema.parse(args);
-      const result = brainstorm(workspaceRoot, count ?? 5);
+      const result = brainstorm(workspaceRoot ?? process.cwd(), count ?? 5);
       return {
         content: [{ type: "text", text: formatBrainstorm(result) }],
       };
@@ -201,7 +226,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     case "update_index": {
       const { workspaceRoot } = UpdateIndexSchema.parse(args);
-      const indexPath = updateIndex(workspaceRoot);
+      const indexPath = updateIndex(workspaceRoot ?? process.cwd());
       return {
         content: [
           {

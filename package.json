@@ -1,12 +1,16 @@
 {
   "name": "hackathon-mode",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "MCP server that overrides AI agent behavior for hackathon speed and creativity",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "hackathon-mode": "./dist/index.js"
+    "hackathon-mode": "bin/hackathon-mode.mjs"
   },
+  "files": [
+    "dist",
+    "bin"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
