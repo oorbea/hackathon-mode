@@ -67,7 +67,7 @@ docker compose up -d
 _TBD – fill in as you build._
 
 ---
-*Built with ❤️ at a hackathon using [hackathon-mode](https://github.com/oorbea/hackathon-mode)*
+*Built at a hackathon using [hackathon-mode](https://github.com/oorbea/hackathon-mode)*
 `;
 }
 
@@ -202,7 +202,7 @@ function generateHackathonPlan(opts: ResolvedOptions): string {
     ? `\n## Features to Build\n${opts.features.split(",").map(f => `- [ ] ${f.trim()}`).join("\n")}\n`
     : "";
 
-  return `# 🚀 Hackathon Plan – ${opts.projectName}
+  return `# Hackathon Plan – ${opts.projectName}
 
 ## Goals
 ${opts.goals}
