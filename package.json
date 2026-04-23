@@ -1,6 +1,6 @@
 {
   "name": "hackathon-mode",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "MCP server that overrides AI agent behavior for hackathon speed and creativity",
   "type": "module",
   "main": "dist/index.js",
@@ -16,13 +16,16 @@
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "zod": "^4.3.6"
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "zod": "4.3.6"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "tsx": "^4.21.0",
-    "typescript": "^5.8.0"
+    "@types/node": "22.19.17",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3"
   }
 }

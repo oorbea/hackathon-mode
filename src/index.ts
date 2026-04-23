@@ -53,7 +53,7 @@ Stay lean. Stay fast. Win the hackathon.
 `;
 
 const server = new Server(
-  { name: "hackathon-mode", version: "1.0.0" },
+  { name: "hackathon-mode", version: "1.1.1" },
   {
     capabilities: {
       tools: {},
