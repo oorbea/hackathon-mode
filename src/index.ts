@@ -62,7 +62,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "initialize_repo",
-      description: "Bootstrap a new hackathon project: generates README, .env.example, HACKATHON_PLAN.md, and .gitignore.",
+      description: "Bootstrap a new hackathon project: generates README, .env.example, HACKATHON_PLAN.md, and .gitignore. Before calling this tool, ASK the user conversationally for: project name, one-sentence goal/value proposition, and preferred tech stack. Then call with what they provide.",
       inputSchema: {
         type: "object",
         properties: {
@@ -83,7 +83,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             description: "Comma-separated list of technologies (e.g. 'Next.js, Supabase, OpenAI').",
           },
         },
-        required: ["workspaceRoot", "projectName", "goals", "techStack"],
+        required: ["workspaceRoot"],
       },
     },
     {
@@ -126,9 +126,9 @@ const DisableSchema = z.object({});
 const StatusSchema = z.object({});
 const InitSchema = z.object({
   workspaceRoot: z.string(),
-  projectName: z.string(),
-  goals: z.string(),
-  techStack: z.string(),
+  projectName: z.string().optional(),
+  goals: z.string().optional(),
+  techStack: z.string().optional(),
 });
 const BrainstormSchema = z.object({
   workspaceRoot: z.string(),
