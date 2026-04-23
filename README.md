@@ -6,6 +6,8 @@ Current project version: `1.1.1`
 
 > https://github.com/oorbea/hackathon-mode
 
+Author: Oriol Orbea Suari
+
 ## Requirements
 
 - Node.js `>=22`
