@@ -1,6 +1,6 @@
 {
   "name": "hackathon-mode",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "MCP server that overrides AI agent behavior for hackathon speed and creativity",
   "author": "Oriol Orbea Suari",
   "type": "module",
