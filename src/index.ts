@@ -14,12 +14,29 @@ import {
   disableHackathonMode,
   readConfig,
   isActive,
+  configCache,
 } from "./logic/config.js";
-import { updateIndex } from "./logic/indexing.js";
+import { updateIndex, scanCache, indexFileCache, getScanSignature } from "./logic/indexing.js";
 import { brainstorm, formatBrainstorm } from "./logic/brainstorm.js";
 import { initRepo } from "./logic/repo-init.js";
+import { loadRules, addRule, removeRule, rulesCache } from "./logic/rules.js";
+import { SessionTracker } from "./logic/cache.js";
+import { generatePitch } from "./logic/pitch.js";
+import { checkpoint } from "./logic/checkpoint.js";
+import { timeCheck } from "./logic/time-check.js";
 
-const HACKATHON_PROTOCOL = `# Hackathon Protocol – Active Rules
+const sessionTracker = new SessionTracker();
+let activeWorkspace: string | null = null;
+
+function resolveWorkspace(ws?: string): string {
+  const resolved = ws ?? process.cwd();
+  activeWorkspace = resolved;
+  return resolved;
+}
+
+const HACKATHON_PROTOCOL_SHORT = `HACKATHON MODE ON. 1)Skip docs/tests 2)Ship>polish 3)No abstractions 4)Shortcuts=features 5)Suggest wow features 6)Ultra-concise replies 7)Read .hackathon-index.md first 8)Match user language. Ship fast.`;
+
+const HACKATHON_PROTOCOL_VERBOSE = `# Hackathon Protocol – Active Rules
 
 You are operating in **Hackathon Mode**. Obey the following rules for every response:
 
@@ -36,7 +53,7 @@ Stay lean. Stay fast. Win the hackathon.
 `;
 
 const server = new Server(
-  { name: "hackathon-mode", version: "1.0.0" },
+  { name: "hackathon-mode", version: "1.1.2" },
   {
     capabilities: {
       tools: {},
@@ -50,9 +67,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   const tools = [];
 
   if (active) {
+    let rulesSection = "";
+    if (activeWorkspace) {
+      const rules = loadRules(activeWorkspace);
+      if (rules.length > 0) {
+        rulesSection =
+          "\n\n## Project Rules (MANDATORY — follow these in EVERY response)\n\n" +
+          rules.map((r, i) => `${i + 1}. ${r}`).join("\n");
+      }
+    }
     tools.push({
       name: "_hackathon_rules",
-      description: `HACKATHON MODE IS ACTIVE. You MUST follow these rules for EVERY response in this session, without exception:\n\n${HACKATHON_PROTOCOL}\n\nThis tool exists only to inject these rules. Do not call it.`,
+      description: `HACKATHON MODE ACTIVE. ${HACKATHON_PROTOCOL_SHORT}${rulesSection}\n\nExtended protocol: read hackathon://protocol resource. DO NOT CALL THIS TOOL.`,
       inputSchema: { type: "object", properties: {}, required: [] },
     });
   }
@@ -60,81 +86,128 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   tools.push(
     {
       name: "enable_hackathon_mode",
-      description: "Activate Hackathon Mode globally. All subsequent AI interactions will follow the Hackathon Protocol.",
+      description: "Activate Hackathon Mode globally.",
       inputSchema: { type: "object", properties: {}, required: [] },
     },
     {
       name: "disable_hackathon_mode",
-      description: "Deactivate Hackathon Mode and restore normal AI behavior.",
+      description: "Deactivate Hackathon Mode.",
       inputSchema: { type: "object", properties: {}, required: [] },
     },
     {
       name: "get_mode_status",
-      description: "Return the current Hackathon Mode state and the full Hackathon Protocol instructions.",
+      description: "Get current mode state + protocol.",
       inputSchema: { type: "object", properties: {}, required: [] },
     },
     {
       name: "initialize_repo",
-      description: "Bootstrap a new hackathon project. Before calling, ASK the user conversationally for: (1) project name, (2) one-sentence goal, (3) tech stack, (4) whether they want a docker-compose.yml, and if yes (5) what services/features they need (databases, cache, queues, storage, etc.). Then call with everything they provide.",
+      description: "Init hackathon repo. Ask user first: name, goal, stack, docker, features.",
       inputSchema: {
         type: "object",
         properties: {
-          workspaceRoot: {
-            type: "string",
-            description: "Absolute path to the project directory. Defaults to current working directory if omitted.",
-          },
-          projectName: {
-            type: "string",
-            description: "Name of the project.",
-          },
-          goals: {
-            type: "string",
-            description: "One-sentence project goal / value proposition.",
-          },
-          techStack: {
-            type: "string",
-            description: "Comma-separated list of technologies (e.g. 'Next.js, Supabase, OpenAI').",
-          },
-          dockerCompose: {
-            type: "boolean",
-            description: "Whether to generate a docker-compose.yml for local development.",
-          },
-          features: {
-            type: "string",
-            description: "Comma-separated services/features needed (e.g. 'postgres, redis, auth, file uploads'). Used to generate docker services and plan sections.",
-          },
+          workspaceRoot: { type: "string", description: "Project dir. Defaults to cwd." },
+          projectName: { type: "string", description: "Project name." },
+          goals: { type: "string", description: "One-sentence goal." },
+          techStack: { type: "string", description: "Comma-separated stack (e.g. 'Next.js, Supabase')." },
+          dockerCompose: { type: "boolean", description: "Generate docker-compose.yml?" },
+          features: { type: "string", description: "Comma-separated services (e.g. 'postgres, redis')." },
         },
         required: [],
       },
     },
     {
       name: "brainstorm",
-      description: "Analyze the current project and suggest 3-5 high-impact 'wow-factor' features tailored to the tech stack.",
+      description: "Suggest 3-5 wow-factor features for current stack.",
       inputSchema: {
         type: "object",
         properties: {
-          workspaceRoot: {
-            type: "string",
-            description: "Absolute path to the project directory. Defaults to current working directory if omitted.",
-          },
-          count: {
-            type: "number",
-            description: "Number of feature ideas to generate (default: 5, max: 5).",
-          },
+          workspaceRoot: { type: "string", description: "Project dir. Defaults to cwd." },
+          count: { type: "number", description: "Ideas to generate (default 5, max 5)." },
         },
         required: [],
       },
     },
     {
       name: "update_index",
-      description: "Scan the workspace and regenerate the .hackathon-index.md strategic context file.",
+      description: "Regenerate .hackathon-index.md workspace map.",
       inputSchema: {
         type: "object",
         properties: {
-          workspaceRoot: {
-            type: "string",
-            description: "Absolute path to the project directory to index. Defaults to current working directory if omitted.",
-          },
+          workspaceRoot: { type: "string", description: "Project dir. Defaults to cwd." },
+        },
+        required: [],
+      },
+    },
+    {
+      name: "add_rule",
+      description: "Add mandatory project rule (persists in .hackathon-rules.md).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workspaceRoot: { type: "string", description: "Project dir. Defaults to cwd." },
+          rule: { type: "string", description: "Rule text." },
+        },
+        required: ["rule"],
+      },
+    },
+    {
+      name: "remove_rule",
+      description: "Remove rule by 1-based index. list_rules first.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workspaceRoot: { type: "string", description: "Project dir. Defaults to cwd." },
+          index: { type: "number", description: "1-based rule index." },
+        },
+        required: ["index"],
+      },
+    },
+    {
+      name: "list_rules",
+      description: "List project rules.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workspaceRoot: { type: "string", description: "Project dir. Defaults to cwd." },
+        },
+        required: [],
+      },
+    },
+    {
+      name: "cache_status",
+      description: "Show session cache state. Call before brainstorm/update_index.",
+      inputSchema: { type: "object", properties: {}, required: [] },
+    },
+    {
+      name: "pitch",
+      description: "Generate <=200-token demo pitch from .hackathon-index.md + HACKATHON_PLAN.md.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workspaceRoot: { type: "string", description: "Project dir. Defaults to cwd." },
+        },
+        required: [],
+      },
+    },
+    {
+      name: "checkpoint",
+      description: "Create quick git checkpoint commit with auto message.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workspaceRoot: { type: "string", description: "Project dir. Defaults to cwd." },
+          message: { type: "string", description: "Optional summary after 'chk:'." },
+        },
+        required: [],
+      },
+    },
+    {
+      name: "time_check",
+      description: "Hackathon elapsed/remaining time and current phase.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          durationHours: { type: "number", description: "Hackathon duration. Default 48." },
         },
         required: [],
       },
@@ -162,6 +235,27 @@ const BrainstormSchema = z.object({
 const UpdateIndexSchema = z.object({
   workspaceRoot: z.string().optional(),
 });
+const AddRuleSchema = z.object({
+  workspaceRoot: z.string().optional(),
+  rule: z.string(),
+});
+const RemoveRuleSchema = z.object({
+  workspaceRoot: z.string().optional(),
+  index: z.number().int().min(1),
+});
+const ListRulesSchema = z.object({
+  workspaceRoot: z.string().optional(),
+});
+const PitchSchema = z.object({
+  workspaceRoot: z.string().optional(),
+});
+const CheckpointSchema = z.object({
+  workspaceRoot: z.string().optional(),
+  message: z.string().optional(),
+});
+const TimeCheckSchema = z.object({
+  durationHours: z.number().positive().optional(),
+});
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
@@ -174,7 +268,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [
           {
             type: "text",
-            text: `✅ Hackathon Mode ENABLED (${config.activatedAt})\n\n${HACKATHON_PROTOCOL}`,
+            text: `Hackathon Mode enabled (${config.activatedAt})\n\n${HACKATHON_PROTOCOL_SHORT}`,
           },
         ],
       };
@@ -187,7 +281,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [
           {
             type: "text",
-            text: "🛑 Hackathon Mode DISABLED. Normal AI behavior restored.",
+            text: "Hackathon Mode disabled. Normal AI behavior restored.",
           },
         ],
       };
@@ -196,21 +290,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     case "get_mode_status": {
       StatusSchema.parse(args ?? {});
       const config = readConfig();
-      const status = config.active ? "🟢 ACTIVE" : "🔴 INACTIVE";
+      const status = config.active ? "ACTIVE" : "INACTIVE";
       const since = config.activatedAt ? `\nActive since: ${config.activatedAt}` : "";
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Hackathon Mode: ${status}${since}\n\n${HACKATHON_PROTOCOL}`,
-          },
-        ],
-      };
+      const text = `Hackathon Mode: ${status}${since}\n\n${HACKATHON_PROTOCOL_SHORT}`;
+      if (sessionTracker.check("get_mode_status", text) === "duplicate") {
+        return { content: [{ type: "text", text: "No changes since last call. Use cached version." }] };
+      }
+      return { content: [{ type: "text", text }] };
     }
 
     case "initialize_repo": {
       const opts = InitSchema.parse(args);
-      const result = initRepo({ ...opts, workspaceRoot: opts.workspaceRoot ?? process.cwd() });
+      const ws = resolveWorkspace(opts.workspaceRoot);
+      const result = initRepo({ ...opts, workspaceRoot: ws });
       return {
         content: [{ type: "text", text: result.message }],
       };
@@ -218,7 +310,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     case "brainstorm": {
       const { workspaceRoot, count } = BrainstormSchema.parse(args);
-      const result = brainstorm(workspaceRoot ?? process.cwd(), count ?? 5);
+      const ws = resolveWorkspace(workspaceRoot);
+      const result = brainstorm(ws, count ?? 5);
       return {
         content: [{ type: "text", text: formatBrainstorm(result) }],
       };
@@ -226,15 +319,132 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     case "update_index": {
       const { workspaceRoot } = UpdateIndexSchema.parse(args);
-      const indexPath = updateIndex(workspaceRoot ?? process.cwd());
+      const ws = resolveWorkspace(workspaceRoot);
+      const sig = getScanSignature(ws);
+      if (sessionTracker.check(`update_index:${ws}`, sig) === "duplicate") {
+        return { content: [{ type: "text", text: "Index unchanged. Skip re-scan." }] };
+      }
+      const indexPath = updateIndex(ws);
+      return { content: [{ type: "text", text: `Index updated: ${indexPath}` }] };
+    }
+
+    case "add_rule": {
+      const { workspaceRoot, rule } = AddRuleSchema.parse(args);
+      const ws = resolveWorkspace(workspaceRoot);
+      const rules = addRule(ws, rule);
       return {
         content: [
           {
             type: "text",
-            text: `✅ Index updated: ${indexPath}\nUse this file to orient yourself in future agent turns.`,
+            text: `rule_added index=${rules.length} msg=\"use list_rules\"`,
           },
         ],
       };
+    }
+
+    case "remove_rule": {
+      const { workspaceRoot, index } = RemoveRuleSchema.parse(args);
+      const ws = resolveWorkspace(workspaceRoot);
+      const { removed } = removeRule(ws, index);
+      if (!removed) {
+        return {
+          content: [{ type: "text", text: `error=no_rule index=${index} msg=\"use list_rules\"` }],
+          isError: true,
+        };
+      }
+      return {
+        content: [
+          {
+            type: "text",
+            text: `rule_removed index=${index} msg=\"use list_rules\"`,
+          },
+        ],
+      };
+    }
+
+    case "list_rules": {
+      const { workspaceRoot } = ListRulesSchema.parse(args);
+      const ws = resolveWorkspace(workspaceRoot);
+      const rules = loadRules(ws);
+      const text =
+        rules.length > 0
+          ? `## Project Rules (${rules.length})\n\n${rules.map((r, i) => `${i + 1}. ${r}`).join("\n")}`
+          : "No project rules defined. Use `add_rule` to create one.";
+      if (sessionTracker.check(`list_rules:${ws}`, text) === "duplicate") {
+        return { content: [{ type: "text", text: "No changes since last call. Use cached version." }] };
+      }
+      return { content: [{ type: "text", text }] };
+    }
+
+    case "cache_status": {
+      const lines: string[] = [];
+      // Build report first, then dedup
+
+
+      const cfgAge = configCache.ageMs();
+      if (cfgAge >= 0) {
+        const cfg = configCache.get();
+        lines.push(`config=cached active=${cfg?.active} age=${Math.round(cfgAge / 1000)}s`);
+      } else {
+        lines.push("config=none");
+      }
+
+      const scans = scanCache.snapshot();
+      if (scans.length === 0) {
+        lines.push("scans=0");
+      } else {
+        for (const { key, ageMs, value } of scans) {
+          lines.push(`scan=${key} entries=${value.length} age=${Math.round(ageMs / 1000)}s`);
+        }
+      }
+
+      const indexes = indexFileCache.snapshot();
+      if (indexes.length === 0) {
+        lines.push("indexes=0");
+      } else {
+        for (const { key, ageMs, value } of indexes) {
+          const sizeKB = (value.length / 1024).toFixed(1);
+          lines.push(`index=${key} size=${sizeKB}KB age=${Math.round(ageMs / 1000)}s`);
+        }
+      }
+
+      const ruleEntries = rulesCache.snapshot();
+      if (ruleEntries.length === 0) {
+        lines.push("rules=0");
+      } else {
+        for (const { key, ageMs, value } of ruleEntries) {
+          lines.push(`rules=${key} count=${value.length} age=${Math.round(ageMs / 1000)}s`);
+        }
+      }
+
+      const seen = sessionTracker.seen();
+      if (seen.length > 0) {
+        lines.push(`dedup=${seen.join(",")}`);
+      }
+
+      const text = lines.join("\n");
+      if (sessionTracker.check("cache_status", text) === "duplicate") {
+        return { content: [{ type: "text", text: "Cache unchanged since last call." }] };
+      }
+      return { content: [{ type: "text", text }] };
+    }
+
+    case "pitch": {
+      const { workspaceRoot } = PitchSchema.parse(args);
+      const ws = resolveWorkspace(workspaceRoot);
+      return { content: [{ type: "text", text: generatePitch({ workspaceRoot: ws }) }] };
+    }
+
+    case "checkpoint": {
+      const { workspaceRoot, message } = CheckpointSchema.parse(args);
+      const ws = resolveWorkspace(workspaceRoot);
+      const text = checkpoint({ workspaceRoot: ws, message });
+      return { content: [{ type: "text", text }], isError: text.startsWith("error=") };
+    }
+
+    case "time_check": {
+      const { durationHours } = TimeCheckSchema.parse(args);
+      return { content: [{ type: "text", text: timeCheck({ durationHours }) }] };
     }
 
     default:
@@ -259,13 +469,13 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => ({
 server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
   if (request.params.uri === "hackathon://protocol") {
     const config = readConfig();
-    const status = config.active ? "**Status: 🟢 ACTIVE**" : "**Status: 🔴 INACTIVE** (enable with `enable_hackathon_mode` tool)";
+    const status = config.active ? "**Status: ACTIVE**" : "**Status: INACTIVE** (enable with `enable_hackathon_mode` tool)";
     return {
       contents: [
         {
           uri: "hackathon://protocol",
           mimeType: "text/markdown",
-          text: `${status}\n\n${HACKATHON_PROTOCOL}`,
+          text: `${status}\n\n${HACKATHON_PROTOCOL_VERBOSE}`,
         },
       ],
     };
