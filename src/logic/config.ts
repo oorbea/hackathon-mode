@@ -1,6 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { CachedValue } from "./cache.js";
 
 export interface HackathonConfig {
   active: boolean;
@@ -16,10 +17,16 @@ const CONFIG_PATH = path.join(os.homedir(), ".hackathon-mcp-config.json");
 
 const DEFAULT_CONFIG: HackathonConfig = { active: false };
 
+export const configCache = new CachedValue<HackathonConfig>(5_000);
+
 export function readConfig(): HackathonConfig {
+  const cached = configCache.get();
+  if (cached) return cached;
   try {
     const raw = fs.readFileSync(CONFIG_PATH, "utf-8");
-    return { ...DEFAULT_CONFIG, ...JSON.parse(raw) } as HackathonConfig;
+    const config = { ...DEFAULT_CONFIG, ...JSON.parse(raw) } as HackathonConfig;
+    configCache.set(config);
+    return config;
   } catch {
     return { ...DEFAULT_CONFIG };
   }
@@ -27,6 +34,7 @@ export function readConfig(): HackathonConfig {
 
 export function writeConfig(config: HackathonConfig): void {
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+  configCache.set(config);
 }
 
 export function enableHackathonMode(): HackathonConfig {

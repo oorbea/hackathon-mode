@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { KeyedCache } from "./cache.js";
 
 const INDEX_FILENAME = ".hackathon-index.md";
 const IGNORE_DIRS = new Set(["node_modules", ".git", "dist", ".next", "out", "coverage", ".cache"]);
@@ -9,6 +10,9 @@ interface FileEntry {
   relPath: string;
   type: "file" | "dir";
 }
+
+export const scanCache = new KeyedCache<FileEntry[]>(60_000);
+export const indexFileCache = new KeyedCache<string>(60_000);
 
 function scanDir(dir: string, root: string, depth: number): FileEntry[] {
   if (depth > MAX_DEPTH) return [];
@@ -62,25 +66,42 @@ function buildMarkdown(dir: string, entries: FileEntry[]): string {
 }
 
 export function updateIndex(workspaceRoot: string): string {
+  scanCache.invalidate(workspaceRoot);
+  indexFileCache.invalidate(workspaceRoot);
+
   const entries = scanDir(workspaceRoot, workspaceRoot, 0);
+  scanCache.set(workspaceRoot, entries);
+
   const content = buildMarkdown(workspaceRoot, entries);
   const indexPath = path.join(workspaceRoot, INDEX_FILENAME);
   fs.writeFileSync(indexPath, content, "utf-8");
+  indexFileCache.set(workspaceRoot, content);
+
   return indexPath;
 }
 
 export function readIndex(workspaceRoot: string): string | null {
+  const cached = indexFileCache.get(workspaceRoot);
+  if (cached !== undefined) return cached;
+
   const indexPath = path.join(workspaceRoot, INDEX_FILENAME);
   try {
-    return fs.readFileSync(indexPath, "utf-8");
+    const content = fs.readFileSync(indexPath, "utf-8");
+    indexFileCache.set(workspaceRoot, content);
+    return content;
   } catch {
     return null;
   }
 }
 
 export function getFileTree(workspaceRoot: string, maxDepth = 3): string {
-  const entries = scanDir(workspaceRoot, workspaceRoot, 0).filter(
-    (e) => e.relPath.split(path.sep).length <= maxDepth
-  );
-  return entries.map((e) => (e.type === "dir" ? `[dir] ${e.relPath}` : `[file] ${e.relPath}`)).join("\n");
+  let entries = scanCache.get(workspaceRoot);
+  if (!entries) {
+    entries = scanDir(workspaceRoot, workspaceRoot, 0);
+    scanCache.set(workspaceRoot, entries);
+  }
+  return entries
+    .filter((e) => e.relPath.split(path.sep).length <= maxDepth)
+    .map((e) => (e.type === "dir" ? `[dir] ${e.relPath}` : `[file] ${e.relPath}`))
+    .join("\n");
 }
