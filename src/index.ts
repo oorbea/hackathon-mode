@@ -75,7 +75,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     },
     {
       name: "initialize_repo",
-      description: "Bootstrap a new hackathon project: generates README, .env.example, HACKATHON_PLAN.md, and .gitignore. Before calling this tool, ASK the user conversationally for: project name, one-sentence goal/value proposition, and preferred tech stack. Then call with what they provide.",
+      description: "Bootstrap a new hackathon project. Before calling, ASK the user conversationally for: (1) project name, (2) one-sentence goal, (3) tech stack, (4) whether they want a docker-compose.yml, and if yes (5) what services/features they need (databases, cache, queues, storage, etc.). Then call with everything they provide.",
       inputSchema: {
         type: "object",
         properties: {
@@ -94,6 +94,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           techStack: {
             type: "string",
             description: "Comma-separated list of technologies (e.g. 'Next.js, Supabase, OpenAI').",
+          },
+          dockerCompose: {
+            type: "boolean",
+            description: "Whether to generate a docker-compose.yml for local development.",
+          },
+          features: {
+            type: "string",
+            description: "Comma-separated services/features needed (e.g. 'postgres, redis, auth, file uploads'). Used to generate docker services and plan sections.",
           },
         },
         required: [],
@@ -144,6 +152,8 @@ const InitSchema = z.object({
   projectName: z.string().optional(),
   goals: z.string().optional(),
   techStack: z.string().optional(),
+  dockerCompose: z.boolean().optional(),
+  features: z.string().optional(),
 });
 const BrainstormSchema = z.object({
   workspaceRoot: z.string().optional(),
