@@ -14,10 +14,14 @@ import {
   disableHackathonMode,
   readConfig,
   isActive,
+  configCache,
 } from "./logic/config.js";
-import { updateIndex } from "./logic/indexing.js";
+import { updateIndex, scanCache, indexFileCache } from "./logic/indexing.js";
 import { brainstorm, formatBrainstorm } from "./logic/brainstorm.js";
 import { initRepo } from "./logic/repo-init.js";
+import { SessionTracker } from "./logic/cache.js";
+
+const sessionTracker = new SessionTracker();
 
 const HACKATHON_PROTOCOL = `# Hackathon Protocol – Active Rules
 
@@ -139,6 +143,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         required: [],
       },
     },
+    {
+      name: "cache_status",
+      description: "Check what data is already cached in this session (config, file tree, index). Call this before brainstorm or update_index to avoid redundant work.",
+      inputSchema: { type: "object", properties: {}, required: [] },
+    },
   );
 
   return { tools };
@@ -198,14 +207,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const config = readConfig();
       const status = config.active ? "🟢 ACTIVE" : "🔴 INACTIVE";
       const since = config.activatedAt ? `\nActive since: ${config.activatedAt}` : "";
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Hackathon Mode: ${status}${since}\n\n${HACKATHON_PROTOCOL}`,
-          },
-        ],
-      };
+      const text = `Hackathon Mode: ${status}${since}\n\n${HACKATHON_PROTOCOL}`;
+      if (sessionTracker.check("get_mode_status", text) === "duplicate") {
+        return { content: [{ type: "text", text: "⚡ No changes since last call. Use cached version." }] };
+      }
+      return { content: [{ type: "text", text }] };
     }
 
     case "initialize_repo": {
@@ -235,6 +241,46 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           },
         ],
       };
+    }
+
+    case "cache_status": {
+      const lines: string[] = ["## Session Cache Status", ""];
+
+      const cfgAge = configCache.ageMs();
+      if (cfgAge >= 0) {
+        const cfg = configCache.get();
+        lines.push(`- **Config**: cached (active=${cfg?.active}), ${Math.round(cfgAge / 1000)}s ago`);
+      } else {
+        lines.push("- **Config**: not cached");
+      }
+
+      const scans = scanCache.snapshot();
+      if (scans.length === 0) {
+        lines.push("- **Workspace scans**: none cached");
+      } else {
+        for (const { key, ageMs, value } of scans) {
+          lines.push(`- **Workspace scan** [\`${key}\`]: ${value.length} entries, ${Math.round(ageMs / 1000)}s ago`);
+        }
+      }
+
+      const indexes = indexFileCache.snapshot();
+      if (indexes.length === 0) {
+        lines.push("- **Index files**: none cached");
+      } else {
+        for (const { key, ageMs, value } of indexes) {
+          const sizeKB = (value.length / 1024).toFixed(1);
+          lines.push(`- **Index file** [\`${key}\`]: ${sizeKB}KB, ${Math.round(ageMs / 1000)}s ago`);
+        }
+      }
+
+      const seen = sessionTracker.seen();
+      if (seen.length > 0) {
+        lines.push(`- **Deduplicated responses**: ${seen.join(", ")}`);
+      }
+
+      lines.push("", "_Call \`update_index\` only if workspace files changed. Otherwise skip re-scanning._");
+
+      return { content: [{ type: "text", text: lines.join("\n") }] };
     }
 
     default:
