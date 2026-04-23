@@ -1,6 +1,6 @@
 {
   "name": "hackathon-mode",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "description": "MCP server that overrides AI agent behavior for hackathon speed and creativity",
   "type": "module",
   "main": "dist/index.js",
