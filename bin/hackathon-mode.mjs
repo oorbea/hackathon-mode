@@ -4,23 +4,21 @@ import path from "node:path";
 
 const SERVER_CONFIG = {
   command: "npx",
-  args: ["hackathon-mode@latest"],
+  args: ["-y", "hackathon-mode@latest"],
 };
 
 const VSCODE_SERVER_CONFIG = {
   type: "stdio",
   command: "npx",
-  args: ["hackathon-mode@latest"],
+  args: ["-y", "hackathon-mode@latest"],
 };
 
 const AGENT_CONFIGS = {
-  claude: { path: ".mcp.json", section: "mcpServers", serverConfig: SERVER_CONFIG },
-  cursor: { path: ".cursor/mcp.json", section: "mcpServers", serverConfig: SERVER_CONFIG },
-  codex: { path: ".codex/mcp.json", section: "mcpServers", serverConfig: SERVER_CONFIG },
-  copilot: { path: ".vscode/mcp.json", section: "servers", serverConfig: VSCODE_SERVER_CONFIG },
-  gemini: { path: ".gemini/settings.json", section: "mcpServers", serverConfig: SERVER_CONFIG },
-  antigravity: { path: ".antigravity/mcp.json", section: "mcpServers", serverConfig: SERVER_CONFIG },
-  openclaw: { path: ".openclaw/mcp.json", section: "mcpServers", serverConfig: SERVER_CONFIG },
+  claude: { path: ".mcp.json", format: "json", section: "mcpServers", serverConfig: SERVER_CONFIG },
+  cursor: { path: ".cursor/mcp.json", format: "json", section: "mcpServers", serverConfig: SERVER_CONFIG },
+  codex: { path: ".codex/config.toml", format: "toml" },
+  copilot: { path: ".vscode/mcp.json", format: "json", section: "servers", serverConfig: VSCODE_SERVER_CONFIG },
+  gemini: { path: ".gemini/settings.json", format: "json", section: "mcpServers", serverConfig: SERVER_CONFIG },
 };
 
 const AGENT_NAMES = Object.keys(AGENT_CONFIGS);
@@ -124,7 +122,7 @@ function readJsonConfig(filePath) {
   }
 }
 
-function writeAgentConfig(workspaceRoot, config) {
+function writeJsonAgentConfig(workspaceRoot, config) {
   const { path: relativePath, section, serverConfig } = config;
   const filePath = path.join(workspaceRoot, relativePath);
   const { existed, data } = readJsonConfig(filePath);
@@ -149,6 +147,44 @@ function writeAgentConfig(workspaceRoot, config) {
   fs.writeFileSync(filePath, `${JSON.stringify(nextData, null, 2)}\n`, "utf-8");
 
   return existed ? "updated" : "created";
+}
+
+function writeCodexConfig(workspaceRoot, config) {
+  const relativePath = config.path;
+  const filePath = path.join(workspaceRoot, relativePath);
+  const existed = fs.existsSync(filePath);
+  const block = `[mcp_servers."hackathon-mode"]\ncommand = "npx"\nargs = ["-y", "hackathon-mode@latest"]\n`;
+  let content = "";
+
+  if (existed) {
+    try {
+      content = fs.readFileSync(filePath, "utf-8");
+    } catch (err) {
+      fail(`could not read ${filePath}: ${err.message}`);
+    }
+  }
+
+  const existingBlockPattern = /(^|\n)\[mcp_servers\.(?:"hackathon-mode"|hackathon-mode)\]\n[\s\S]*?(?=\n\[|$)/;
+  let nextContent;
+  if (existingBlockPattern.test(content)) {
+    nextContent = content.replace(existingBlockPattern, `$1${block.trimEnd()}`);
+    if (!nextContent.endsWith("\n")) nextContent += "\n";
+  } else {
+    const separator = content.trim().length > 0 ? "\n\n" : "";
+    nextContent = `${content.replace(/\s*$/, "")}${separator}${block}`;
+  }
+
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, nextContent, "utf-8");
+
+  return existed ? "updated" : "created";
+}
+
+function writeAgentConfig(workspaceRoot, config) {
+  if (config.format === "toml") {
+    return writeCodexConfig(workspaceRoot, config);
+  }
+  return writeJsonAgentConfig(workspaceRoot, config);
 }
 
 function initProject(args) {
