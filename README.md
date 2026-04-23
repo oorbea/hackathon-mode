@@ -1,253 +1,185 @@
 # hackathon-mode
 
-MCP server that overrides AI agent behavior for hackathon speed: skip docs/tests, ship fast, save tokens, and keep a strategic index so agents orient instantly across sessions.
+`hackathon-mode` is an MCP server that injects a hackathon operating protocol into AI agents: ship fast, stay concise, keep a strategic project index, and preserve project-specific rules across sessions.
 
-> [https://github.com/oorbea/hackathon-mode](https://github.com/oorbea/hackathon-mode)
+Current project version: `1.1.1`
 
----
+> https://github.com/oorbea/hackathon-mode
 
-## What It Does
+## Requirements
 
-When active, every agent interaction follows the Hackathon Protocol:
-
-| Rule | Behavior |
-|------|----------|
-| Skip docs & tests | Unless you explicitly ask |
-| Working code > best practices | Ship it, polish later |
-| No abstractions | Solve the 48-hour problem, not the 5-year one |
-| Zero tech debt guilt | Shortcuts are features |
-| Suggest wow features | Agent proactively proposes high-impact ideas |
-| Token-saving mode | Ultra-concise replies, no filler, no unnecessary comments |
-| Strategic indexing | Agent reads/writes `.hackathon-index.md` to stay oriented across sessions |
-| Match user's language | Agent always replies in the language the user writes in |
-
-The protocol is **injected automatically** on every agent connection when mode is active — no need to remind the agent each session.
-
----
+- Node.js `>=22`
+- npm with lockfile support
 
 ## Installation
 
-### NPX (no install needed)
+Run without installing:
 
-```
+```bash
 npx hackathon-mode@latest
 ```
 
-### Build from source
+Build from source:
 
 ```bash
 git clone https://github.com/oorbea/hackathon-mode
 cd hackathon-mode
 npm install
 npm run build
+npm start
 ```
-
----
 
 ## Agent Configuration
 
-All agents use the same JSON block. Replace `npx hackathon-mode@latest` with `node /path/to/hackathon-mode/dist/index.js` if you built from source.
+All MCP-compatible agents use the same server command. For source builds, replace the `npx` command with `node /path/to/hackathon-mode/dist/index.js`.
 
-### Claude Code
+```json
+{
+  "mcpServers": {
+    "hackathon-mode": {
+      "command": "npx",
+      "args": ["hackathon-mode@latest"]
+    }
+  }
+}
+```
 
-**User-level** (all projects on your machine):
+Common config locations:
+
+| Agent | User-level config | Project-level config |
+|---|---|---|
+| Claude Code | `~/.claude.json` | `.mcp.json` |
+| Cursor | `~/.cursor/mcp.json` | `.cursor/mcp.json` |
+| OpenAI Codex | `~/.codex/mcp.json` | project MCP config |
+| Gemini CLI | `~/.gemini/settings.json` | project MCP config |
+| Google Antigravity | `~/.antigravity/mcp.json` | `.antigravity/mcp.json` |
+| OpenClaw | `~/.openclaw/mcp.json` | `.openclaw/mcp.json` |
+
+Claude Code can also add it from the CLI:
 
 ```bash
 claude mcp add --scope user hackathon-mode -- npx hackathon-mode@latest
-```
-
-**Project-level** (stored in `.mcp.json`, commit for team sharing):
-
-```bash
 claude mcp add hackathon-mode -- npx hackathon-mode@latest
 ```
 
-Or manually in `~/.claude.json` (user) / `.mcp.json` (project):
-
-```json
-{
-  "mcpServers": {
-    "hackathon-mode": {
-      "command": "npx",
-      "args": ["hackathon-mode@latest"]
-    }
-  }
-}
-```
-
----
-
-### Cursor
-
-**User-level** — `~/.cursor/mcp.json`
-
-**Project-level** — `.cursor/mcp.json` at repo root
-
-```json
-{
-  "mcpServers": {
-    "hackathon-mode": {
-      "command": "npx",
-      "args": ["hackathon-mode@latest"]
-    }
-  }
-}
-```
-
----
-
-### OpenAI Codex
-
-`~/.codex/mcp.json`
-
-```json
-{
-  "mcpServers": {
-    "hackathon-mode": {
-      "command": "npx",
-      "args": ["hackathon-mode@latest"]
-    }
-  }
-}
-```
-
----
-
-### Gemini CLI
-
-`~/.gemini/settings.json`
-
-```json
-{
-  "mcpServers": {
-    "hackathon-mode": {
-      "command": "npx",
-      "args": ["hackathon-mode@latest"]
-    }
-  }
-}
-```
-
----
-
-### Google Antigravity
-
-`~/.antigravity/mcp.json` (user) / `.antigravity/mcp.json` (project)
-
-```json
-{
-  "mcpServers": {
-    "hackathon-mode": {
-      "command": "npx",
-      "args": ["hackathon-mode@latest"]
-    }
-  }
-}
-```
-
----
-
-### OpenClaw
-
-`~/.openclaw/mcp.json` (user) / `.openclaw/mcp.json` (project)
-
-```json
-{
-  "mcpServers": {
-    "hackathon-mode": {
-      "command": "npx",
-      "args": ["hackathon-mode@latest"]
-    }
-  }
-}
-```
-
----
-
-## User-Level vs Project-Level
-
-| Scope | Config location | Effect |
-|-------|----------------|--------|
-| **User-level** | `~/.claude.json`, `~/.cursor/mcp.json`, etc. | Active in every project on your machine |
-| **Project-level** | `.mcp.json`, `.cursor/mcp.json`, etc. at repo root | Active only in this repo; commit it so teammates get it automatically |
-
----
-
 ## Quick Start
 
-1. **Activate** — ask your agent to call `enable_hackathon_mode`
-2. **Bootstrap** — ask your agent to call `initialize_repo`; it will ask you for:
-   - Project name
-   - One-sentence goal
-   - Tech stack
-   - Whether you want a `docker-compose.yml`
-   - If yes: what services/features you need (databases, cache, queues, storage…)
-3. **Index** — call `update_index` to generate `.hackathon-index.md`
-4. **Ideate** — call `brainstorm` for high-impact feature ideas tailored to your stack
-5. **Ship** — build fast; re-run `update_index` whenever the project structure changes significantly
-6. **Wrap up** — call `disable_hackathon_mode` to restore normal behavior
+1. Call `enable_hackathon_mode`.
+2. Call `initialize_repo` if the project needs starter files.
+3. Call `update_index` to generate `.hackathon-index.md`.
+4. Call `brainstorm` for stack-aware feature ideas.
+5. Add persistent project rules with `add_rule` when needed.
+6. Call `pitch` and `time_check` during demo prep.
+7. Call `disable_hackathon_mode` when normal behavior should return.
 
----
+## Hackathon Protocol
+
+When active, the server injects a short hidden tool named `_hackathon_rules` into the MCP tool list. Agents receive the protocol on connection and can also read the full resource at `hackathon://protocol`.
+
+The active rules are:
+
+- Skip docs and tests unless explicitly requested.
+- Prefer working code over polish.
+- Avoid abstractions and future-proofing during the hackathon window.
+- Treat shortcuts as acceptable when they help ship.
+- Suggest high-impact wow features.
+- Keep replies concise.
+- Read `.hackathon-index.md` before touching files.
+- Match the user's language.
 
 ## Tools
 
 | Tool | Params | Description |
-|------|--------|-------------|
-| `enable_hackathon_mode` | — | Activate the Hackathon Protocol |
-| `disable_hackathon_mode` | — | Restore normal AI behavior |
-| `get_mode_status` | — | Check active state + read the full protocol |
-| `initialize_repo` | all optional | Bootstrap project files; agent asks for details conversationally |
-| `update_index` | `workspaceRoot?` | Regenerate `.hackathon-index.md` |
-| `brainstorm` | `workspaceRoot?`, `count?` (1–5) | Suggest wow-factor features matched to your stack |
+|---|---|---|
+| `enable_hackathon_mode` | none | Activates Hackathon Mode globally and records activation time. |
+| `disable_hackathon_mode` | none | Deactivates Hackathon Mode. |
+| `get_mode_status` | none | Returns active state and the short protocol. |
+| `initialize_repo` | `workspaceRoot?`, `projectName?`, `goals?`, `techStack?`, `dockerCompose?`, `features?` | Creates missing starter files for a hackathon project. |
+| `update_index` | `workspaceRoot?` | Regenerates `.hackathon-index.md`. |
+| `brainstorm` | `workspaceRoot?`, `count?` | Suggests 1-5 wow-factor features for the detected stack. |
+| `add_rule` | `workspaceRoot?`, `rule` | Appends a mandatory project rule to `.hackathon-rules.md`. |
+| `remove_rule` | `workspaceRoot?`, `index` | Removes a project rule by 1-based index. |
+| `list_rules` | `workspaceRoot?` | Lists persisted project rules. |
+| `cache_status` | none | Shows in-memory cache and duplicate-response tracking state. |
+| `pitch` | `workspaceRoot?` | Generates a concise demo pitch from project context files. |
+| `checkpoint` | `workspaceRoot?`, `message?` | Runs `git add -A` and creates a `chk:` checkpoint commit. |
+| `time_check` | `durationHours?` | Reports elapsed time, remaining time, phase, and deadline. |
 
-All `workspaceRoot` params default to the current working directory when omitted.
-
-### `initialize_repo` — generated files
-
-| File | Always | Only if docker requested |
-|------|--------|--------------------------|
-| `README.md` | ✓ | |
-| `.env.example` | ✓ | |
-| `HACKATHON_PLAN.md` | ✓ | |
-| `.gitignore` | ✓ | |
-| `docker-compose.yml` | | ✓ |
-
-Auto-detected services for `docker-compose.yml`: PostgreSQL, MySQL, MongoDB, Redis, RabbitMQ, MinIO (S3-compatible), Elasticsearch — based on your tech stack and features.
-
----
+All `workspaceRoot` params default to the server process working directory when omitted.
 
 ## Resources
 
 | URI | Description |
-|-----|-------------|
-| `hackathon://protocol` | Markdown fragment with the active Hackathon Protocol rules |
+|---|---|
+| `hackathon://protocol` | Markdown description of the Hackathon Protocol and current active/inactive state. |
 
----
+## Files and State
 
-## How enable/disable Works
+`hackathon-mode` can create or update these files:
 
-When `enable_hackathon_mode` is called, a `_hackathon_rules` entry is injected into the MCP tool list. Every MCP-compatible agent fetches the tool list on connect, so the protocol is **guaranteed to be received** at the start of every session while mode is active.
+| Path | Written by | Purpose |
+|---|---|---|
+| `~/.hackathon-mcp-config.json` | `enable_hackathon_mode`, `disable_hackathon_mode` | Global active/inactive state and activation time. |
+| `.hackathon-index.md` | `update_index` | Workspace map for agent orientation. |
+| `.hackathon-rules.md` | `add_rule`, `remove_rule` | Persistent project rules injected into the active protocol. |
+| `README.md` | `initialize_repo` | Starter project README, only created when missing. |
+| `.env.example` | `initialize_repo` | Starter environment variable template, only created when missing. |
+| `HACKATHON_PLAN.md` | `initialize_repo` | Starter hackathon plan, only created when missing. |
+| `.gitignore` | `initialize_repo` | Starter gitignore, only created when missing. |
+| `docker-compose.yml` | `initialize_repo` | Optional local services file, only created when requested and missing. |
 
-When `disable_hackathon_mode` is called, `_hackathon_rules` disappears from the tool list on the next connection.
+`checkpoint` is intentionally broad: it stages all current changes with `git add -A` and creates a `chk:` commit.
 
-State is persisted to `~/.hackathon-mcp-config.json` and survives agent restarts.
+## Security
 
----
+Known npm vulnerabilities should stay at zero before release:
+
+```bash
+npm audit --json
+```
+
+As of 2026-04-23, `npm audit --json` reports:
+
+```json
+{
+  "vulnerabilities": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  }
+}
+```
+
+Direct dependency versions are pinned in `package.json`; transitive dependency versions are locked by `package-lock.json`.
 
 ## Development
 
 ```bash
-npm run dev      # Run with tsx (no build step)
-npm run build    # Compile TypeScript → dist/
-npm start        # Run compiled server
+npm run dev
+npm run build
+npm start
+./node_modules/.bin/tsc --noEmit
+npm ls --depth=0 --json
 ```
 
-```
+Project layout:
+
+```text
 src/
-  index.ts          # MCP server, tool registration, protocol injection
+  index.ts             MCP server, tool registration, resource registration
   logic/
-    config.ts       # State persistence (~/.hackathon-mcp-config.json)
-    indexing.ts     # Workspace scanner → .hackathon-index.md
-    brainstorm.ts   # Feature suggestion engine
-    repo-init.ts    # Project bootstrapper + docker-compose generator
+    brainstorm.ts      Feature suggestion engine
+    cache.ts           Short-lived caches and duplicate detection
+    checkpoint.ts      Git checkpoint commits
+    config.ts          Global state persistence
+    indexing.ts        Workspace scanner and index writer
+    pitch.ts           Demo pitch generator
+    repo-init.ts       Starter file and docker-compose generator
+    rules.ts           Project rule persistence
+    time-check.ts      Hackathon phase/time reporting
 ```
+
+Agent-facing implementation context is maintained in `AGENTS.md`; Claude-specific discovery points to the same context through `CLAUDE.md`.
