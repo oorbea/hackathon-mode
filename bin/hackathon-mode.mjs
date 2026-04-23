@@ -7,13 +7,20 @@ const SERVER_CONFIG = {
   args: ["hackathon-mode@latest"],
 };
 
+const VSCODE_SERVER_CONFIG = {
+  type: "stdio",
+  command: "npx",
+  args: ["hackathon-mode@latest"],
+};
+
 const AGENT_CONFIGS = {
-  claude: ".mcp.json",
-  cursor: ".cursor/mcp.json",
-  codex: ".codex/mcp.json",
-  gemini: ".gemini/settings.json",
-  antigravity: ".antigravity/mcp.json",
-  openclaw: ".openclaw/mcp.json",
+  claude: { path: ".mcp.json", section: "mcpServers", serverConfig: SERVER_CONFIG },
+  cursor: { path: ".cursor/mcp.json", section: "mcpServers", serverConfig: SERVER_CONFIG },
+  codex: { path: ".codex/mcp.json", section: "mcpServers", serverConfig: SERVER_CONFIG },
+  copilot: { path: ".vscode/mcp.json", section: "servers", serverConfig: VSCODE_SERVER_CONFIG },
+  gemini: { path: ".gemini/settings.json", section: "mcpServers", serverConfig: SERVER_CONFIG },
+  antigravity: { path: ".antigravity/mcp.json", section: "mcpServers", serverConfig: SERVER_CONFIG },
+  openclaw: { path: ".openclaw/mcp.json", section: "mcpServers", serverConfig: SERVER_CONFIG },
 };
 
 const AGENT_NAMES = Object.keys(AGENT_CONFIGS);
@@ -117,23 +124,24 @@ function readJsonConfig(filePath) {
   }
 }
 
-function writeAgentConfig(workspaceRoot, relativePath) {
+function writeAgentConfig(workspaceRoot, config) {
+  const { path: relativePath, section, serverConfig } = config;
   const filePath = path.join(workspaceRoot, relativePath);
   const { existed, data } = readJsonConfig(filePath);
 
-  const existingServers = data.mcpServers;
+  const existingServers = data[section];
   if (
     existingServers !== undefined &&
     (existingServers === null || Array.isArray(existingServers) || typeof existingServers !== "object")
   ) {
-    fail(`${relativePath} has an invalid mcpServers value; expected an object`);
+    fail(`${relativePath} has an invalid ${section} value; expected an object`);
   }
 
   const nextData = {
     ...data,
-    mcpServers: {
+    [section]: {
       ...(existingServers ?? {}),
-      "hackathon-mode": SERVER_CONFIG,
+      "hackathon-mode": serverConfig,
     },
   };
 
@@ -150,9 +158,9 @@ function initProject(args) {
   const results = [];
 
   for (const agentName of selectedAgents) {
-    const relativePath = AGENT_CONFIGS[agentName];
-    const status = writeAgentConfig(workspaceRoot, relativePath);
-    results.push({ agentName, relativePath, status });
+    const config = AGENT_CONFIGS[agentName];
+    const status = writeAgentConfig(workspaceRoot, config);
+    results.push({ agentName, relativePath: config.path, status });
   }
 
   console.log("hackathon-mode project bootstrap complete.\n");

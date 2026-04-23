@@ -62,6 +62,7 @@ Common config locations:
 | Claude Code | `~/.claude.json` | `.mcp.json` |
 | Cursor | `~/.cursor/mcp.json` | `.cursor/mcp.json` |
 | OpenAI Codex | `~/.codex/mcp.json` | project MCP config |
+| GitHub Copilot in VS Code | user profile `mcp.json` | `.vscode/mcp.json` |
 | Gemini CLI | `~/.gemini/settings.json` | project MCP config |
 | Google Antigravity | `~/.antigravity/mcp.json` | `.antigravity/mcp.json` |
 | OpenClaw | `~/.openclaw/mcp.json` | `.openclaw/mcp.json` |
@@ -87,6 +88,7 @@ Agent-specific bootstrap:
 npx hackathon-mode@latest init --agent claude
 npx hackathon-mode@latest init --agent cursor
 npx hackathon-mode@latest init --agent codex
+npx hackathon-mode@latest init --agent copilot
 npx hackathon-mode@latest init --agent gemini
 npx hackathon-mode@latest init --agent antigravity
 npx hackathon-mode@latest init --agent openclaw
@@ -98,12 +100,13 @@ npx hackathon-mode@latest init --agent openclaw
 .mcp.json
 .cursor/mcp.json
 .codex/mcp.json
+.vscode/mcp.json
 .gemini/settings.json
 .antigravity/mcp.json
 .openclaw/mcp.json
 ```
 
-If a config file already exists, `init` preserves existing JSON and other MCP servers, then adds or replaces only `mcpServers["hackathon-mode"]`. Invalid JSON fails with an error and is not overwritten.
+If a config file already exists, `init` preserves existing JSON and other MCP servers, then adds or replaces only the `hackathon-mode` server entry. Most agents use `mcpServers["hackathon-mode"]`; GitHub Copilot in VS Code uses `servers["hackathon-mode"]` in `.vscode/mcp.json`. Invalid JSON fails with an error and is not overwritten.
 
 ## Quick Start
 
