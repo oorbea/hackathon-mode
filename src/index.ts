@@ -13,6 +13,7 @@ import {
   enableHackathonMode,
   disableHackathonMode,
   readConfig,
+  isActive,
 } from "./logic/config.js";
 import { updateIndex } from "./logic/indexing.js";
 import { brainstorm, formatBrainstorm } from "./logic/brainstorm.js";
@@ -43,8 +44,19 @@ const server = new Server(
   }
 );
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  const active = isActive();
+  const tools = [];
+
+  if (active) {
+    tools.push({
+      name: "_hackathon_rules",
+      description: `HACKATHON MODE IS ACTIVE. You MUST follow these rules for EVERY response in this session, without exception:\n\n${HACKATHON_PROTOCOL}\n\nThis tool exists only to inject these rules. Do not call it.`,
+      inputSchema: { type: "object", properties: {}, required: [] },
+    });
+  }
+
+  tools.push(
     {
       name: "enable_hackathon_mode",
       description: "Activate Hackathon Mode globally. All subsequent AI interactions will follow the Hackathon Protocol.",
@@ -68,7 +80,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           workspaceRoot: {
             type: "string",
-            description: "Absolute path to the project directory.",
+            description: "Absolute path to the project directory. Defaults to current working directory if omitted.",
           },
           projectName: {
             type: "string",
@@ -83,7 +95,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             description: "Comma-separated list of technologies (e.g. 'Next.js, Supabase, OpenAI').",
           },
         },
-        required: ["workspaceRoot"],
+        required: [],
       },
     },
     {
@@ -94,14 +106,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           workspaceRoot: {
             type: "string",
-            description: "Absolute path to the project directory.",
+            description: "Absolute path to the project directory. Defaults to current working directory if omitted.",
           },
           count: {
             type: "number",
             description: "Number of feature ideas to generate (default: 5, max: 5).",
           },
         },
-        required: ["workspaceRoot"],
+        required: [],
       },
     },
     {
@@ -112,30 +124,32 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           workspaceRoot: {
             type: "string",
-            description: "Absolute path to the project directory to index.",
+            description: "Absolute path to the project directory to index. Defaults to current working directory if omitted.",
           },
         },
-        required: ["workspaceRoot"],
+        required: [],
       },
     },
-  ],
-}));
+  );
+
+  return { tools };
+});
 
 const EnableSchema = z.object({});
 const DisableSchema = z.object({});
 const StatusSchema = z.object({});
 const InitSchema = z.object({
-  workspaceRoot: z.string(),
+  workspaceRoot: z.string().optional(),
   projectName: z.string().optional(),
   goals: z.string().optional(),
   techStack: z.string().optional(),
 });
 const BrainstormSchema = z.object({
-  workspaceRoot: z.string(),
+  workspaceRoot: z.string().optional(),
   count: z.number().int().min(1).max(5).optional(),
 });
 const UpdateIndexSchema = z.object({
-  workspaceRoot: z.string(),
+  workspaceRoot: z.string().optional(),
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -185,7 +199,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     case "initialize_repo": {
       const opts = InitSchema.parse(args);
-      const result = initRepo(opts);
+      const result = initRepo({ ...opts, workspaceRoot: opts.workspaceRoot ?? process.cwd() });
       return {
         content: [{ type: "text", text: result.message }],
       };
@@ -193,7 +207,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     case "brainstorm": {
       const { workspaceRoot, count } = BrainstormSchema.parse(args);
-      const result = brainstorm(workspaceRoot, count ?? 5);
+      const result = brainstorm(workspaceRoot ?? process.cwd(), count ?? 5);
       return {
         content: [{ type: "text", text: formatBrainstorm(result) }],
       };
@@ -201,7 +215,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     case "update_index": {
       const { workspaceRoot } = UpdateIndexSchema.parse(args);
-      const indexPath = updateIndex(workspaceRoot);
+      const indexPath = updateIndex(workspaceRoot ?? process.cwd());
       return {
         content: [
           {
