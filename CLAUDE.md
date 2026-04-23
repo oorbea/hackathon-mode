@@ -1,37 +1,25 @@
-# CLAUDE.md
+# Claude Code Context
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Claude Code should use `AGENTS.md` as the canonical agent context for this repository. This file exists so Claude can discover the same guidance through its native convention.
 
-## Commands
+## Quick Reference
 
 ```bash
-npm run dev      # Run server with tsx (no build step, for development)
-npm run build    # Compile TypeScript → dist/
-npm run start    # Run compiled server (requires build first)
+npm run dev      # Run the MCP server from TypeScript with tsx
+npm run build    # Compile TypeScript into dist/
+npm start        # Run the compiled server from dist/
+npm audit        # Check known npm vulnerabilities; expected total is 0
 ```
 
-No test or lint scripts exist — intentional.
+Runtime support is Node `>=22`. Direct dependencies are pinned in `package.json`, and transitive dependencies are locked by `package-lock.json`.
 
-## Architecture
+## Important Behavior
 
-MCP (Model Context Protocol) server that injects hackathon behavioral rules into AI agents (Claude Code, Cursor, etc.) to optimize for speed during 48-hour hackathons.
+- `src/index.ts` registers all MCP tools/resources and routes calls into `src/logic/`.
+- Hackathon mode state is persisted at `~/.hackathon-mcp-config.json`.
+- `update_index` writes `.hackathon-index.md`.
+- `add_rule` and `remove_rule` write `.hackathon-rules.md`.
+- `initialize_repo` creates starter files only when missing.
+- `checkpoint` is intentionally side-effectful: it runs `git add -A` and creates a `chk:` commit.
 
-**Entry point:** `src/index.ts` — defines MCP server, registers all 6 tools and 1 resource, handles all request routing via `@modelcontextprotocol/sdk` with stdio transport.
-
-**Logic modules** (`src/logic/`):
-- `config.ts` — persists active/inactive state to `~/.hackathon-mcp-config.json`
-- `indexing.ts` — scans workspace (depth 4, skips node_modules/.git/dist/.next) and writes `.hackathon-index.md` for agent orientation
-- `brainstorm.ts` — detects tech stack via regex, selects 3–5 "wow-factor" features from a hardcoded bank of 10
-- `repo-init.ts` — generates README.md, .env.example, HACKATHON_PLAN.md, .gitignore boilerplate
-
-**Tools exposed:**
-1. `enable_hackathon_mode` / `disable_hackathon_mode` / `get_mode_status` — protocol lifecycle
-2. `initialize_repo` — bootstraps new project with 4 boilerplate files
-3. `update_index` — generates `.hackathon-index.md`
-4. `brainstorm` — suggests features tailored to detected stack
-
-**Resource:** `hackathon://protocol` — exposes the 7 protocol rules as markdown.
-
-## Adding Tools or Resources
-
-All tools are registered in `src/index.ts` via `server.setRequestHandler(ListToolsRequestSchema, ...)` and `server.setRequestHandler(CallToolRequestSchema, ...)`. Add new tool logic in `src/logic/` and wire up both handlers.
+For tool-by-tool behavior, architecture notes, and development rules, read `AGENTS.md`.
