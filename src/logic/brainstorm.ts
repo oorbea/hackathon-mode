@@ -2,7 +2,6 @@ import { readIndex, getFileTree } from "./indexing.js";
 
 interface BrainstormResult {
   features: Feature[];
-  context: string;
 }
 
 interface Feature {
@@ -117,19 +116,12 @@ export function brainstorm(workspaceRoot: string, count = 5): BrainstormResult {
   const index = readIndex(workspaceRoot);
   const tree = index ?? getFileTree(workspaceRoot);
   const features = pickFeatures(Math.min(count, 5), tree);
-  return { features, context: tree.slice(0, 500) };
+  return { features };
 }
 
 export function formatBrainstorm(result: BrainstormResult): string {
-  const lines: string[] = ["## 💡 Hackathon Feature Ideas\n"];
-  result.features.forEach((f, i) => {
-    lines.push(
-      `### ${i + 1}. ${f.title} (effort: ${f.effort})`,
-      f.description,
-      `**Wow factor:** ${f.wowFactor}`,
-      `**Tech hint:** ${f.techHint}`,
-      ""
-    );
-  });
-  return lines.join("\n");
+  const rows = result.features.map((f, i) =>
+    `|${i + 1}|${f.title}|${f.effort}|${f.wowFactor}|${f.techHint}|`
+  );
+  return ["## Feature Ideas", "|#|Feature|Effort|Why|Hint|", "|---|---|---|---|---|", ...rows].join("\n");
 }
