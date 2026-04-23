@@ -21,6 +21,9 @@ import { brainstorm, formatBrainstorm } from "./logic/brainstorm.js";
 import { initRepo } from "./logic/repo-init.js";
 import { loadRules, addRule, removeRule, rulesCache } from "./logic/rules.js";
 import { SessionTracker } from "./logic/cache.js";
+import { generatePitch } from "./logic/pitch.js";
+import { checkpoint } from "./logic/checkpoint.js";
+import { timeCheck } from "./logic/time-check.js";
 
 const sessionTracker = new SessionTracker();
 let activeWorkspace: string | null = null;
@@ -175,6 +178,40 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       description: "Show session cache state. Call before brainstorm/update_index.",
       inputSchema: { type: "object", properties: {}, required: [] },
     },
+    {
+      name: "pitch",
+      description: "Generate <=200-token demo pitch from .hackathon-index.md + HACKATHON_PLAN.md.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workspaceRoot: { type: "string", description: "Project dir. Defaults to cwd." },
+        },
+        required: [],
+      },
+    },
+    {
+      name: "checkpoint",
+      description: "Create quick git checkpoint commit with auto message.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workspaceRoot: { type: "string", description: "Project dir. Defaults to cwd." },
+          message: { type: "string", description: "Optional summary after 'chk:'." },
+        },
+        required: [],
+      },
+    },
+    {
+      name: "time_check",
+      description: "Hackathon elapsed/remaining time and current phase.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          durationHours: { type: "number", description: "Hackathon duration. Default 48." },
+        },
+        required: [],
+      },
+    },
   );
 
   return { tools };
@@ -209,6 +246,16 @@ const RemoveRuleSchema = z.object({
 const ListRulesSchema = z.object({
   workspaceRoot: z.string().optional(),
 });
+const PitchSchema = z.object({
+  workspaceRoot: z.string().optional(),
+});
+const CheckpointSchema = z.object({
+  workspaceRoot: z.string().optional(),
+  message: z.string().optional(),
+});
+const TimeCheckSchema = z.object({
+  durationHours: z.number().positive().optional(),
+});
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
@@ -221,7 +268,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [
           {
             type: "text",
-            text: `✅ Hackathon Mode ENABLED (${config.activatedAt})\n\n${HACKATHON_PROTOCOL_SHORT}`,
+            text: `Hackathon Mode enabled (${config.activatedAt})\n\n${HACKATHON_PROTOCOL_SHORT}`,
           },
         ],
       };
@@ -234,7 +281,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [
           {
             type: "text",
-            text: "🛑 Hackathon Mode DISABLED. Normal AI behavior restored.",
+            text: "Hackathon Mode disabled. Normal AI behavior restored.",
           },
         ],
       };
@@ -243,11 +290,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     case "get_mode_status": {
       StatusSchema.parse(args ?? {});
       const config = readConfig();
-      const status = config.active ? "🟢 ACTIVE" : "🔴 INACTIVE";
+      const status = config.active ? "ACTIVE" : "INACTIVE";
       const since = config.activatedAt ? `\nActive since: ${config.activatedAt}` : "";
       const text = `Hackathon Mode: ${status}${since}\n\n${HACKATHON_PROTOCOL_SHORT}`;
       if (sessionTracker.check("get_mode_status", text) === "duplicate") {
-        return { content: [{ type: "text", text: "⚡ No changes since last call. Use cached version." }] };
+        return { content: [{ type: "text", text: "No changes since last call. Use cached version." }] };
       }
       return { content: [{ type: "text", text }] };
     }
@@ -289,7 +336,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [
           {
             type: "text",
-            text: `✅ Rule added (#${rules.length}): "${rule}"\n\nActive rules:\n${rules.map((r, i) => `${i + 1}. ${r}`).join("\n")}`,
+            text: `rule_added index=${rules.length} msg=\"use list_rules\"`,
           },
         ],
       };
@@ -298,10 +345,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     case "remove_rule": {
       const { workspaceRoot, index } = RemoveRuleSchema.parse(args);
       const ws = resolveWorkspace(workspaceRoot);
-      const { rules, removed } = removeRule(ws, index);
+      const { removed } = removeRule(ws, index);
       if (!removed) {
         return {
-          content: [{ type: "text", text: `❌ No rule at index ${index}. Use list_rules to see valid indices.` }],
+          content: [{ type: "text", text: `error=no_rule index=${index} msg=\"use list_rules\"` }],
           isError: true,
         };
       }
@@ -309,7 +356,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [
           {
             type: "text",
-            text: `✅ Removed rule #${index}: "${removed}"\n\nRemaining rules:\n${rules.length > 0 ? rules.map((r, i) => `${i + 1}. ${r}`).join("\n") : "(none)"}`,
+            text: `rule_removed index=${index} msg=\"use list_rules\"`,
           },
         ],
       };
@@ -324,64 +371,80 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           ? `## Project Rules (${rules.length})\n\n${rules.map((r, i) => `${i + 1}. ${r}`).join("\n")}`
           : "No project rules defined. Use `add_rule` to create one.";
       if (sessionTracker.check(`list_rules:${ws}`, text) === "duplicate") {
-        return { content: [{ type: "text", text: "⚡ No changes since last call. Use cached version." }] };
+        return { content: [{ type: "text", text: "No changes since last call. Use cached version." }] };
       }
       return { content: [{ type: "text", text }] };
     }
 
     case "cache_status": {
-      const lines: string[] = ["## Session Cache Status", ""];
+      const lines: string[] = [];
       // Build report first, then dedup
 
 
       const cfgAge = configCache.ageMs();
       if (cfgAge >= 0) {
         const cfg = configCache.get();
-        lines.push(`- **Config**: cached (active=${cfg?.active}), ${Math.round(cfgAge / 1000)}s ago`);
+        lines.push(`config=cached active=${cfg?.active} age=${Math.round(cfgAge / 1000)}s`);
       } else {
-        lines.push("- **Config**: not cached");
+        lines.push("config=none");
       }
 
       const scans = scanCache.snapshot();
       if (scans.length === 0) {
-        lines.push("- **Workspace scans**: none cached");
+        lines.push("scans=0");
       } else {
         for (const { key, ageMs, value } of scans) {
-          lines.push(`- **Workspace scan** [\`${key}\`]: ${value.length} entries, ${Math.round(ageMs / 1000)}s ago`);
+          lines.push(`scan=${key} entries=${value.length} age=${Math.round(ageMs / 1000)}s`);
         }
       }
 
       const indexes = indexFileCache.snapshot();
       if (indexes.length === 0) {
-        lines.push("- **Index files**: none cached");
+        lines.push("indexes=0");
       } else {
         for (const { key, ageMs, value } of indexes) {
           const sizeKB = (value.length / 1024).toFixed(1);
-          lines.push(`- **Index file** [\`${key}\`]: ${sizeKB}KB, ${Math.round(ageMs / 1000)}s ago`);
+          lines.push(`index=${key} size=${sizeKB}KB age=${Math.round(ageMs / 1000)}s`);
         }
       }
 
       const ruleEntries = rulesCache.snapshot();
       if (ruleEntries.length === 0) {
-        lines.push("- **Project rules**: none cached");
+        lines.push("rules=0");
       } else {
         for (const { key, ageMs, value } of ruleEntries) {
-          lines.push(`- **Project rules** [\`${key}\`]: ${value.length} rules, ${Math.round(ageMs / 1000)}s ago`);
+          lines.push(`rules=${key} count=${value.length} age=${Math.round(ageMs / 1000)}s`);
         }
       }
 
       const seen = sessionTracker.seen();
       if (seen.length > 0) {
-        lines.push(`- **Deduplicated responses**: ${seen.join(", ")}`);
+        lines.push(`dedup=${seen.join(",")}`);
       }
-
-      lines.push("", "_Call `update_index` only if workspace files changed._");
 
       const text = lines.join("\n");
       if (sessionTracker.check("cache_status", text) === "duplicate") {
         return { content: [{ type: "text", text: "Cache unchanged since last call." }] };
       }
       return { content: [{ type: "text", text }] };
+    }
+
+    case "pitch": {
+      const { workspaceRoot } = PitchSchema.parse(args);
+      const ws = resolveWorkspace(workspaceRoot);
+      return { content: [{ type: "text", text: generatePitch({ workspaceRoot: ws }) }] };
+    }
+
+    case "checkpoint": {
+      const { workspaceRoot, message } = CheckpointSchema.parse(args);
+      const ws = resolveWorkspace(workspaceRoot);
+      const text = checkpoint({ workspaceRoot: ws, message });
+      return { content: [{ type: "text", text }], isError: text.startsWith("error=") };
+    }
+
+    case "time_check": {
+      const { durationHours } = TimeCheckSchema.parse(args);
+      return { content: [{ type: "text", text: timeCheck({ durationHours }) }] };
     }
 
     default:
@@ -406,7 +469,7 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => ({
 server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
   if (request.params.uri === "hackathon://protocol") {
     const config = readConfig();
-    const status = config.active ? "**Status: 🟢 ACTIVE**" : "**Status: 🔴 INACTIVE** (enable with `enable_hackathon_mode` tool)";
+    const status = config.active ? "**Status: ACTIVE**" : "**Status: INACTIVE** (enable with `enable_hackathon_mode` tool)";
     return {
       contents: [
         {
