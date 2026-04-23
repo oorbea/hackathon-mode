@@ -3,6 +3,13 @@ import path from "path";
 
 interface RepoInitOptions {
   workspaceRoot: string;
+  projectName?: string;
+  goals?: string;
+  techStack?: string;
+}
+
+interface ResolvedOptions {
+  workspaceRoot: string;
   projectName: string;
   goals: string;
   techStack: string;
@@ -30,7 +37,7 @@ function writeIfMissing(filePath: string, content: string): boolean {
   return true;
 }
 
-function generateReadme(opts: RepoInitOptions): string {
+function generateReadme(opts: ResolvedOptions): string {
   return `# ${opts.projectName}
 
 > ${opts.goals}
@@ -54,7 +61,7 @@ _TBD – fill in as you build._
 `;
 }
 
-function generateEnvExample(opts: RepoInitOptions): string {
+function generateEnvExample(opts: ResolvedOptions): string {
   const lines = [
     "# Copy this file to .env and fill in the values",
     "# NEVER commit .env to git",
@@ -76,7 +83,7 @@ function generateEnvExample(opts: RepoInitOptions): string {
   return lines.join("\n");
 }
 
-function generateHackathonPlan(opts: RepoInitOptions): string {
+function generateHackathonPlan(opts: ResolvedOptions): string {
   return `# 🚀 Hackathon Plan – ${opts.projectName}
 
 ## Goals
@@ -123,11 +130,17 @@ _Add notes here as you build._
 export function initRepo(opts: RepoInitOptions): RepoInitResult {
   const filesCreated: string[] = [];
   const { workspaceRoot } = opts;
+  const resolved = {
+    workspaceRoot,
+    projectName: opts.projectName ?? path.basename(workspaceRoot),
+    goals: opts.goals ?? "TBD – describe your project goal",
+    techStack: opts.techStack ?? "TBD – list your technologies",
+  };
 
   const files: Array<[string, string]> = [
-    [path.join(workspaceRoot, "README.md"), generateReadme(opts)],
-    [path.join(workspaceRoot, ".env.example"), generateEnvExample(opts)],
-    [path.join(workspaceRoot, "HACKATHON_PLAN.md"), generateHackathonPlan(opts)],
+    [path.join(workspaceRoot, "README.md"), generateReadme(resolved)],
+    [path.join(workspaceRoot, ".env.example"), generateEnvExample(resolved)],
+    [path.join(workspaceRoot, "HACKATHON_PLAN.md"), generateHackathonPlan(resolved)],
     [path.join(workspaceRoot, ".gitignore"), HACKATHON_GITIGNORE],
   ];
 
