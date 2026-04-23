@@ -19,9 +19,17 @@ import {
 import { updateIndex, scanCache, indexFileCache } from "./logic/indexing.js";
 import { brainstorm, formatBrainstorm } from "./logic/brainstorm.js";
 import { initRepo } from "./logic/repo-init.js";
+import { loadRules, addRule, removeRule, rulesCache } from "./logic/rules.js";
 import { SessionTracker } from "./logic/cache.js";
 
 const sessionTracker = new SessionTracker();
+let activeWorkspace: string | null = null;
+
+function resolveWorkspace(ws?: string): string {
+  const resolved = ws ?? process.cwd();
+  activeWorkspace = resolved;
+  return resolved;
+}
 
 const HACKATHON_PROTOCOL = `# Hackathon Protocol – Active Rules
 
@@ -54,9 +62,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   const tools = [];
 
   if (active) {
+    let rulesSection = "";
+    if (activeWorkspace) {
+      const rules = loadRules(activeWorkspace);
+      if (rules.length > 0) {
+        rulesSection =
+          "\n\n## Project Rules (MANDATORY — follow these in EVERY response)\n\n" +
+          rules.map((r, i) => `${i + 1}. ${r}`).join("\n");
+      }
+    }
     tools.push({
       name: "_hackathon_rules",
-      description: `HACKATHON MODE IS ACTIVE. You MUST follow these rules for EVERY response in this session, without exception:\n\n${HACKATHON_PROTOCOL}\n\nThis tool exists only to inject these rules. Do not call it.`,
+      description: `HACKATHON MODE IS ACTIVE. You MUST follow these rules for EVERY response in this session, without exception:\n\n${HACKATHON_PROTOCOL}${rulesSection}\n\nThis tool exists only to inject these rules. Do not call it.`,
       inputSchema: { type: "object", properties: {}, required: [] },
     });
   }
@@ -144,8 +161,58 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
     },
     {
+      name: "add_rule",
+      description: "Add a project-specific rule that the agent MUST follow when Hackathon Mode is active. Rules persist in .hackathon-rules.md at the workspace root.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workspaceRoot: {
+            type: "string",
+            description: "Absolute path to the project directory. Defaults to current working directory if omitted.",
+          },
+          rule: {
+            type: "string",
+            description: "The rule text to add (e.g. 'Always commit after making changes').",
+          },
+        },
+        required: ["rule"],
+      },
+    },
+    {
+      name: "remove_rule",
+      description: "Remove a project rule by its index number (1-based). Use list_rules first to see current rules and their indices.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workspaceRoot: {
+            type: "string",
+            description: "Absolute path to the project directory. Defaults to current working directory if omitted.",
+          },
+          index: {
+            type: "number",
+            description: "1-based index of the rule to remove.",
+          },
+        },
+        required: ["index"],
+      },
+    },
+    {
+      name: "list_rules",
+      description: "List all project-specific rules for the workspace.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workspaceRoot: {
+            type: "string",
+            description: "Absolute path to the project directory. Defaults to current working directory if omitted.",
+          },
+        },
+        required: [],
+      },
+    },
+    {
       name: "cache_status",
-      description: "Check what data is already cached in this session (config, file tree, index). Call this before brainstorm or update_index to avoid redundant work.",
+      description: "Check what data is already cached in this session (config, file tree, index, rules). Call this before brainstorm or update_index to avoid redundant work.",
       inputSchema: { type: "object", properties: {}, required: [] },
     },
   );
@@ -169,6 +236,17 @@ const BrainstormSchema = z.object({
   count: z.number().int().min(1).max(5).optional(),
 });
 const UpdateIndexSchema = z.object({
+  workspaceRoot: z.string().optional(),
+});
+const AddRuleSchema = z.object({
+  workspaceRoot: z.string().optional(),
+  rule: z.string(),
+});
+const RemoveRuleSchema = z.object({
+  workspaceRoot: z.string().optional(),
+  index: z.number().int().min(1),
+});
+const ListRulesSchema = z.object({
   workspaceRoot: z.string().optional(),
 });
 
@@ -216,7 +294,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     case "initialize_repo": {
       const opts = InitSchema.parse(args);
-      const result = initRepo({ ...opts, workspaceRoot: opts.workspaceRoot ?? process.cwd() });
+      const ws = resolveWorkspace(opts.workspaceRoot);
+      const result = initRepo({ ...opts, workspaceRoot: ws });
       return {
         content: [{ type: "text", text: result.message }],
       };
@@ -224,7 +303,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     case "brainstorm": {
       const { workspaceRoot, count } = BrainstormSchema.parse(args);
-      const result = brainstorm(workspaceRoot ?? process.cwd(), count ?? 5);
+      const ws = resolveWorkspace(workspaceRoot);
+      const result = brainstorm(ws, count ?? 5);
       return {
         content: [{ type: "text", text: formatBrainstorm(result) }],
       };
@@ -232,7 +312,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     case "update_index": {
       const { workspaceRoot } = UpdateIndexSchema.parse(args);
-      const indexPath = updateIndex(workspaceRoot ?? process.cwd());
+      const ws = resolveWorkspace(workspaceRoot);
+      const indexPath = updateIndex(ws);
       return {
         content: [
           {
@@ -241,6 +322,54 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           },
         ],
       };
+    }
+
+    case "add_rule": {
+      const { workspaceRoot, rule } = AddRuleSchema.parse(args);
+      const ws = resolveWorkspace(workspaceRoot);
+      const rules = addRule(ws, rule);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `✅ Rule added (#${rules.length}): "${rule}"\n\nActive rules:\n${rules.map((r, i) => `${i + 1}. ${r}`).join("\n")}`,
+          },
+        ],
+      };
+    }
+
+    case "remove_rule": {
+      const { workspaceRoot, index } = RemoveRuleSchema.parse(args);
+      const ws = resolveWorkspace(workspaceRoot);
+      const { rules, removed } = removeRule(ws, index);
+      if (!removed) {
+        return {
+          content: [{ type: "text", text: `❌ No rule at index ${index}. Use list_rules to see valid indices.` }],
+          isError: true,
+        };
+      }
+      return {
+        content: [
+          {
+            type: "text",
+            text: `✅ Removed rule #${index}: "${removed}"\n\nRemaining rules:\n${rules.length > 0 ? rules.map((r, i) => `${i + 1}. ${r}`).join("\n") : "(none)"}`,
+          },
+        ],
+      };
+    }
+
+    case "list_rules": {
+      const { workspaceRoot } = ListRulesSchema.parse(args);
+      const ws = resolveWorkspace(workspaceRoot);
+      const rules = loadRules(ws);
+      const text =
+        rules.length > 0
+          ? `## Project Rules (${rules.length})\n\n${rules.map((r, i) => `${i + 1}. ${r}`).join("\n")}`
+          : "No project rules defined. Use `add_rule` to create one.";
+      if (sessionTracker.check(`list_rules:${ws}`, text) === "duplicate") {
+        return { content: [{ type: "text", text: "⚡ No changes since last call. Use cached version." }] };
+      }
+      return { content: [{ type: "text", text }] };
     }
 
     case "cache_status": {
@@ -270,6 +399,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         for (const { key, ageMs, value } of indexes) {
           const sizeKB = (value.length / 1024).toFixed(1);
           lines.push(`- **Index file** [\`${key}\`]: ${sizeKB}KB, ${Math.round(ageMs / 1000)}s ago`);
+        }
+      }
+
+      const ruleEntries = rulesCache.snapshot();
+      if (ruleEntries.length === 0) {
+        lines.push("- **Project rules**: none cached");
+      } else {
+        for (const { key, ageMs, value } of ruleEntries) {
+          lines.push(`- **Project rules** [\`${key}\`]: ${value.length} rules, ${Math.round(ageMs / 1000)}s ago`);
         }
       }
 
